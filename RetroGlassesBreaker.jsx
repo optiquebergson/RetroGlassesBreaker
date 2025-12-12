@@ -1,3 +1,123 @@
+import React, { useState, useEffect, useRef } from 'react';
+
+const RetroGlassesBreaker = () => {
+  const canvasRef = useRef(null);
+  const [gameState, setGameState] = useState('email'); // email, playing, levelComplete, gameOver, won
+  const [email, setEmail] = useState('');
+  const [level, setLevel] = useState(1);
+  const [score, setScore] = useState(0);
+  const [lives, setLives] = useState(3);
+  const [emailError, setEmailError] = useState('');
+  const requestRef = useRef(null);
+
+  const CANVAS_WIDTH = 800;
+  const CANVAS_HEIGHT = 600;
+
+  const PADDLE_WIDTH = 110;
+  const PADDLE_HEIGHT = 20;
+
+  const BALL_SIZE = 22;
+
+  const BRICK_COLS = 8;
+  const BRICK_WIDTH = 90;
+  const BRICK_HEIGHT = 30;
+  const BRICK_PADDING = 5;
+  const BRICK_OFFSET_TOP = 80;
+  const BRICK_OFFSET_LEFT = 35;
+
+  const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+  const confettiRef = useRef([]);
+
+  const gameRef = useRef({
+    paddle: { x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2, y: CANVAS_HEIGHT - 40, width: PADDLE_WIDTH, height: PADDLE_HEIGHT },
+    ball: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2, dx: 4, dy: -4, size: BALL_SIZE },
+    bricks: [],
+    keys: {},
+    mouseX: CANVAS_WIDTH / 2,
+    ballLaunched: false,
+    touchX: null,
+    showBrokenGlasses: false,
+    brokenPieces: []
+  });
+
+  /** MOBILE + PC */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    const handleTouchMove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      const x = touch.clientX - rect.left;
+      gameRef.current.mouseX = x;
+    };
+
+    if (canvas) {
+      canvas.addEventListener("touchstart", handleTouchMove);
+      canvas.addEventListener("touchmove", handleTouchMove);
+    }
+
+    return () => {
+      if (canvas) {
+        canvas.removeEventListener("touchstart", handleTouchMove);
+        canvas.removeEventListener("touchmove", handleTouchMove);
+      }
+    };
+  }, []);
+
+  const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const handleEmailSubmit = () => {
+    if (!validateEmail(email)) {
+      setEmailError("Veuillez entrer une adresse email valide");
+      return;
+    }
+    setEmailError("");
+    setGameState("playing");
+    initGame();
+  };
+
+  /** INIT BRICKS */
+  const initBricks = () => {
+    const bricks = [];
+    const rows = 5 + level;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < BRICK_COLS; c++) {
+        const health = level === 4 ? 2 : 1;
+
+        bricks.push({
+          x: BRICK_OFFSET_LEFT + c * (BRICK_WIDTH + BRICK_PADDING),
+          y: BRICK_OFFSET_TOP + r * (BRICK_HEIGHT + BRICK_PADDING),
+          width: BRICK_WIDTH,
+          height: BRICK_HEIGHT,
+          health,
+          maxHealth: health,
+          visible: true,
+          letter: LETTERS[Math.floor(Math.random() * LETTERS.length)]
+        });
+      }
+    }
+    return bricks;
+  };
+
+  /** INIT GAME */
+  const initGame = () => {
+    const g = gameRef.current;
+
+    g.paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
+
+    g.ball = {
+      x: CANVAS_WIDTH / 2,
+      y: CANVAS_HEIGHT - 60,
+      dx: 4 + level * 0.4,
+      dy: -(4 + level * 0.4),
+      size: BALL_SIZE
+    };
+
+    g.bricks = initBricks();
+    g.ballLaunched = false;
+  };
 import React, { useEffect, useRef, useState } from "react";
 
 export default function RetroGlassesBreaker() {
