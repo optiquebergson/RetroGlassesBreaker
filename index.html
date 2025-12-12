@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Glasses Breaker</title>
+
+<style>
+  body {
+    margin: 0;
+    background: #0d0d0d;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-family: monospace;
+    color: white;
+  }
+
+  #game-container {
+    position: relative;
+  }
+
+  #canvas {
+    background: #111;
+    border: 3px solid #33ccff;
+    border-radius: 10px;
+  }
+
+  .center-text {
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    text-shadow: 0 0 6px #ff00ff;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .btn-restart {
+    margin-top: 20px;
+    padding: 10px 22px;
+    font-size: 20px;
+    color: white;
+    background: #ff0066;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+</style>
+</head>
+
+<body>
+
+<div id="game-container">
+  <canvas id="canvas" width="360" height="500"></canvas>
+  <div id="overlay" class="center-text"></div>
+</div>
+
+<script>
+/* ------------------------------
+      VARIABLES DU JEU
+--------------------------------*/
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let started = false;
+let gameOver = false;
+let win = false;
+
+let ball = { x: 150, y: 300, dx: 3, dy: -3, r: 8 };
+let paddle = { x: 120, y: 460, w: 150, h: 12 };
+let glasses = [];
+let shards = [];
+let confetti = [];
+
+function createGlasses() {
+  const arr = [];
+  const startX = 80;
+  const y = 120;
+  const spacing = 180;
+
+  for (let i = 0; i < 3; i++) {
+    arr.push({
+      x: startX + i * spacing,
+      y,
+      w: 140,
+      h: 60,
+      broken: false,
+    });
+  }
+  return arr;
+}
+
+glasses = createGlasses();
+
+/* ------------------------------
+      DESSIN DES LUNETTES
+--------------------------------*/
+function drawGlasses(g) {
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = g.broken ? "#aa0000" : "#33ccff";
+
+  ctx.strokeRect(g.x, g.y, g.w, g.h);
+
+  ctx.beginPath();
+  ctx.moveTo(g.x + g.w / 2, g.y);
+  ctx.lineTo(g.x + g.w / 2, g.y + g.h);
+  ctx.stroke();
+
+  if (g.broken) {
+    ctx.strokeStyle = "#ff0000";
+    ctx.beginPath();
+    ctx.moveTo(g.x + g.w/2, g.y + g.h/2);
+    ctx.lineTo(g.x + g.w/2 - 20, g.y + g.h/2 - 20);
+    ctx.lineTo(g.x + g.w/2 + 25, g.y + g.h/2 - 10);
+    ctx.lineTo(g.x + g.w/2 - 10, g.y + g.h/2 + 25);
+    ctx.stroke();
+  }
+}
+
+/* ------------------------------
+      ÉCLATS DE VERRE
+--------------------------------*/
+function breakGlass(g) {
+  g.broken = true;
+
+  for (let i = 0; i < 20; i++) {
+    shards.push({
+      x: g.x + g.w / 2,
+      y: g.y + g.h / 2,
+      dx: (Math.random() - 0.5) * 6,
+      dy: (Math.random() - 0.5) * 6,
+      alpha: 1
+    });
+  }
+}
+
+function drawShards() {
+  shards.forEach((s) => {
+    s.x += s.dx;
+    s.y += s.dy;
+    s.dy += 0.2;
+    s.alpha -= 0.01;
+
+    ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
+    ctx.fillRect(s.x, s.y, 3, 3);
+  });
+
+  shards = shards.filter((s) => s.alpha > 0);
+}
+
+/* ------------------------------
+      CONFETTIS (VICTOIRE)
+--------------------------------*/
+function launchConfetti() {
+  for (let i = 0; i < 150; i++) {
+    confetti.push({
+      x: Math.random() * canvas.width,
+      y: -20,
+      dx: (Math.random() - 0.5) * 3,
+      dy: Math.random() * 4 + 2,
+      size: Math.random() * 5 + 2,
+    });
+  }
+}
+
+function drawConfetti() {
+  confetti.forEach((c) => {
+    c.x += c.dx;
+    c.y += c.dy;
+
+    ctx.fillRect(c.x, c.y, c.size, c.size);
+  });
+}
+
+/* ------------------------------
+      BOUCLE DU JEU
+--------------------------------*/
+function gameLoop() {
+  if (!started || gameOver || win) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Ball
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+  ctx.fillStyle = "white";
+  ctx.fill();
+
+  ball.x += ball.dx;
+  ball.y += ball.dy;
+
+  if (ball.x < ball.r || ball.x > canvas.width - ball.r) ball.dx *= -1;
+  if (ball.y < ball.r) ball.dy *= -1;
+
+  if (ball.y > canvas.height) {
+    gameOver = true;
+    showGameOver();
+    return;
+  }
+
+  // Paddle
+  ctx.fillStyle = "#33ff99";
+  ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+
+  if (
+    ball.y + ball.r >= paddle.y &&
+    ball.x >= paddle.x &&
+    ball.x <= paddle.x + paddle.w
+  ) {
+    ball.dy *= -1;
+    ball.y = paddle.y - ball.r;
+  }
+
+  // Lunettes
+  glasses.forEach((g) => {
+    drawGlasses(g);
+
+    if (
+      !g.broken &&
+      ball.x > g.x &&
+      ball.x < g.x + g.w &&
+      ball.y - ball.r < g.y + g.h &&
+      ball.y + ball.r > g.y
+    ) {
+      ball.dy *= -1;
+      breakGlass(g);
+
+      if (glasses.every((x) => x.broken)) {
+        win = true;
+        launchConfetti();
+        showWin();
+      }
+    }
+  });
+
+  drawShards();
+  if (win) drawConfetti();
+
+  requestAnimationFrame(gameLoop);
+}
+
+/* ------------------------------
+      ÉCRANS (START / GAME OVER / WIN)
+--------------------------------*/
+const overlay = document.getElementById("overlay");
+
+function showStart() {
+  overlay.innerHTML = `
+    <div style="font-size:30px;margin-bottom:10px;">🕹️ Tap pour jouer</div>
+    <div style="font-size:22px;opacity:0.7;">Casse toutes les lunettes !</div>
+  `;
+}
+
+function showGameOver() {
+  overlay.innerHTML = `
+    <div style="font-size:42px;margin-bottom:10px;">🕶️💥</div>
+    <div style="font-size:32px;">Oups… Game Over !</div>
+    <button class="btn-restart" onclick="location.reload()">Rejouer</button>
+  `;
+}
+
+function showWin() {
+  overlay.innerHTML = `
+    <div style="font-size:40px;margin-bottom:10px;">🎉</div>
+    <div style="font-size:30px;">Bravo ! Toutes les lunettes sont cassées !</div>
+    <button class="btn-restart" onclick="location.reload()">Rejouer</button>
+  `;
+}
+
+/* ------------------------------
+      CONTROLES
+--------------------------------*/
+document.addEventListener("keydown", (e) => {
+  if (!started) return;
+
+  if (e.key === "ArrowLeft") paddle.x -= 30;
+  if (e.key === "ArrowRight") paddle.x += 30;
+
+  if (paddle.x < 0) paddle.x = 0;
+  if (paddle.x > canvas.width - paddle.w)
+    paddle.x = canvas.width - paddle.w;
+});
+
+canvas.addEventListener("touchmove", (e) => {
+  if (!started) return;
+
+  let rect = canvas.getBoundingClientRect();
+  let touchX = e.touches[0].clientX - rect.left;
+
+  paddle.x = touchX - paddle.w / 2;
+
+  if (paddle.x < 0) paddle.x = 0;
+  if (paddle.x > canvas.width - paddle.w)
+    paddle.x = canvas.width - paddle.w;
+});
+
+/* ------------------------------
+     DÉMARRAGE DU JEU
+--------------------------------*/
+showStart();
+
+canvas.addEventListener(
+  "click",
+  () => {
+    if (!started) {
+      started = true;
+      overlay.innerHTML = "";
+      requestAnimationFrame(gameLoop);
+    }
+  },
+  { once: true }
+);
+</script>
+
+</body>
+</html>
