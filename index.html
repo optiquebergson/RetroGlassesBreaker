@@ -2,66 +2,82 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const RetroGlassesBreaker = () => {
   const canvasRef = useRef(null);
-  const [gameState, setGameState] = useState('email'); // email, playing, levelComplete, gameOver, won
-  const [email, setEmail] = useState('');
+  const containerRef = useRef(null);
+  const [gameState, setGameState] = useState('email');
   const [level, setLevel] = useState(1);
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(3);
-  const [emailError, setEmailError] = useState('');
+  const [showBrokenGlasses, setShowBrokenGlasses] = useState(false);
+  const [confetti, setConfetti] = useState([]);
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const requestRef = useRef(null);
   
-  const CANVAS_WIDTH = 800;
-  const CANVAS_HEIGHT = 600;
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  
   const PADDLE_WIDTH = 100;
   const PADDLE_HEIGHT = 20;
-  const BALL_SIZE = 16;
+  const BALL_SIZE = 30;
   const BRICK_COLS = 8;
-  const BRICK_WIDTH = 90;
-  const BRICK_HEIGHT = 30;
   const BRICK_PADDING = 5;
-  const BRICK_OFFSET_TOP = 80;
-  const BRICK_OFFSET_LEFT = 35;
 
   const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const BRICK_COLORS = [
+    '#FF006E', '#8338EC', '#3A86FF', '#FB5607', 
+    '#FFBE0B', '#06FFA5', '#FF006E', '#8338EC'
+  ];
 
   const gameRef = useRef({
-    paddle: { x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2, y: CANVAS_HEIGHT - 40, width: PADDLE_WIDTH, height: PADDLE_HEIGHT },
-    ball: { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2, dx: 4, dy: -4, size: BALL_SIZE },
+    paddle: { x: 0, y: 0, width: PADDLE_WIDTH, height: PADDLE_HEIGHT },
+    ball: { x: 0, y: 0, dx: 4, dy: -4, size: BALL_SIZE },
     bricks: [],
     keys: {},
-    mouseX: CANVAS_WIDTH / 2,
+    mouseX: 0,
+    touchX: null,
     ballLaunched: false
   });
 
-  const validateEmail = (email) => {
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email);
-  };
-
-  const handleEmailSubmit = () => {
-    if (!validateEmail(email)) {
-      setEmailError('Veuillez entrer une adresse email valide');
-      return;
-    }
-    setEmailError('');
-    setGameState('playing');
-    initGame();
-  };
+  useEffect(() => {
+    const updateSize = () => {
+      const maxWidth = window.innerWidth < 850 ? window.innerWidth - 20 : 800;
+      const maxHeight = window.innerHeight < 650 ? window.innerHeight * 0.7 : 600;
+      const aspectRatio = 800 / 600;
+      
+      let width = maxWidth;
+      let height = width / aspectRatio;
+      
+      if (height > maxHeight) {
+        height = maxHeight;
+        width = height * aspectRatio;
+      }
+      
+      setCanvasSize({ width: Math.floor(width), height: Math.floor(height) });
+    };
+    
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
 
   const initBricks = () => {
     const bricks = [];
     const rows = 5 + level;
+    const brickWidth = (canvasSize.width - 70) / BRICK_COLS - BRICK_PADDING;
+    const brickHeight = 30;
+    const offsetTop = 80;
+    const offsetLeft = 35;
+    
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < BRICK_COLS; col++) {
         const health = level === 4 ? 2 : 1;
         bricks.push({
-          x: BRICK_OFFSET_LEFT + col * (BRICK_WIDTH + BRICK_PADDING),
-          y: BRICK_OFFSET_TOP + row * (BRICK_HEIGHT + BRICK_PADDING),
-          width: BRICK_WIDTH,
-          height: BRICK_HEIGHT,
+          x: offsetLeft + col * (brickWidth + BRICK_PADDING),
+          y: offsetTop + row * (brickHeight + BRICK_PADDING),
+          width: brickWidth,
+          height: brickHeight,
           health: health,
           maxHealth: health,
           letter: LETTERS[Math.floor(Math.random() * LETTERS.length)],
+          color: BRICK_COLORS[col % BRICK_COLORS.length],
           visible: true
         });
       }
@@ -71,14 +87,49 @@ const RetroGlassesBreaker = () => {
 
   const initGame = () => {
     const game = gameRef.current;
-    game.paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
-    game.ball.x = CANVAS_WIDTH / 2;
-    game.ball.y = CANVAS_HEIGHT - 60;
+    game.paddle.x = canvasSize.width / 2 - PADDLE_WIDTH / 2;
+    game.paddle.y = canvasSize.height - 40;
+    game.ball.x = canvasSize.width / 2;
+    game.ball.y = canvasSize.height - 60;
     game.ball.dx = 4 + level * 0.5;
     game.ball.dy = -(4 + level * 0.5);
+    game.mouseX = canvasSize.width / 2;
+    game.touchX = null;
     game.bricks = initBricks();
     game.ballLaunched = false;
   };
+
+  const createConfetti = () => {
+    const newConfetti = [];
+    for (let i = 0; i < 150; i++) {
+      newConfetti.push({
+        x: Math.random() * window.innerWidth,
+        y: -10,
+        vx: (Math.random() - 0.5) * 4,
+        vy: Math.random() * 3 + 2,
+        color: BRICK_COLORS[Math.floor(Math.random() * BRICK_COLORS.length)],
+        size: Math.random() * 8 + 4,
+        rotation: Math.random() * 360
+      });
+    }
+    setConfetti(newConfetti);
+  };
+
+  useEffect(() => {
+    if (gameState === 'won' && confetti.length > 0) {
+      const interval = setInterval(() => {
+        setConfetti(prev => {
+          return prev.map(c => ({
+            ...c,
+            x: c.x + c.vx,
+            y: c.y + c.vy,
+            rotation: c.rotation + 5
+          })).filter(c => c.y < window.innerHeight);
+        });
+      }, 30);
+      return () => clearInterval(interval);
+    }
+  }, [gameState, confetti.length]);
 
   useEffect(() => {
     if (gameState === 'playing') {
@@ -98,12 +149,34 @@ const RetroGlassesBreaker = () => {
 
       const handleMouseMove = (e) => {
         const rect = canvas.getBoundingClientRect();
-        gameRef.current.mouseX = e.clientX - rect.left;
+        gameRef.current.mouseX = (e.clientX - rect.left) * (canvasSize.width / rect.width);
+      };
+
+      const handleTouchStart = (e) => {
+        e.preventDefault();
+        if (!gameRef.current.ballLaunched) {
+          gameRef.current.ballLaunched = true;
+        }
+      };
+
+      const handleTouchMove = (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        gameRef.current.touchX = (touch.clientX - rect.left) * (canvasSize.width / rect.width);
+      };
+
+      const handleTouchEnd = (e) => {
+        e.preventDefault();
+        gameRef.current.touchX = null;
       };
 
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('keyup', handleKeyUp);
       canvas.addEventListener('mousemove', handleMouseMove);
+      canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+      canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+      canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
 
       const gameLoop = () => {
         update();
@@ -117,41 +190,40 @@ const RetroGlassesBreaker = () => {
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
         canvas.removeEventListener('mousemove', handleMouseMove);
+        canvas.removeEventListener('touchstart', handleTouchStart);
+        canvas.removeEventListener('touchmove', handleTouchMove);
+        canvas.removeEventListener('touchend', handleTouchEnd);
         if (requestRef.current) {
           cancelAnimationFrame(requestRef.current);
         }
       };
     }
-  }, [gameState, level, lives]);
+  }, [gameState, level, lives, canvasSize]);
 
   const update = () => {
     const game = gameRef.current;
     
-    // Move paddle
     if (game.keys['ArrowLeft'] && game.paddle.x > 0) {
       game.paddle.x -= 8;
     }
-    if (game.keys['ArrowRight'] && game.paddle.x < CANVAS_WIDTH - game.paddle.width) {
+    if (game.keys['ArrowRight'] && game.paddle.x < canvasSize.width - game.paddle.width) {
       game.paddle.x += 8;
     }
     
-    // Mouse control
-    game.paddle.x = Math.max(0, Math.min(CANVAS_WIDTH - game.paddle.width, game.mouseX - game.paddle.width / 2));
+    const targetX = game.touchX !== null ? game.touchX : game.mouseX;
+    game.paddle.x = Math.max(0, Math.min(canvasSize.width - game.paddle.width, targetX - game.paddle.width / 2));
 
-    // Move ball
     if (game.ballLaunched) {
       game.ball.x += game.ball.dx;
       game.ball.y += game.ball.dy;
 
-      // Wall collision
-      if (game.ball.x <= 0 || game.ball.x >= CANVAS_WIDTH - game.ball.size) {
+      if (game.ball.x <= 0 || game.ball.x >= canvasSize.width - game.ball.size) {
         game.ball.dx = -game.ball.dx;
       }
       if (game.ball.y <= 0) {
         game.ball.dy = -game.ball.dy;
       }
 
-      // Paddle collision
       if (
         game.ball.y + game.ball.size >= game.paddle.y &&
         game.ball.y <= game.paddle.y + game.paddle.height &&
@@ -163,7 +235,6 @@ const RetroGlassesBreaker = () => {
         game.ball.dx = (hitPos - 0.5) * 10;
       }
 
-      // Brick collision
       game.bricks.forEach(brick => {
         if (brick.visible &&
           game.ball.x + game.ball.size > brick.x &&
@@ -180,15 +251,17 @@ const RetroGlassesBreaker = () => {
         }
       });
 
-      // Ball falls
-      if (game.ball.y > CANVAS_HEIGHT) {
+      if (game.ball.y > canvasSize.height) {
+        setShowBrokenGlasses(true);
+        setTimeout(() => setShowBrokenGlasses(false), 1500);
+        
         setLives(l => {
           const newLives = l - 1;
           if (newLives <= 0) {
             setGameState('gameOver');
           } else {
-            game.ball.x = CANVAS_WIDTH / 2;
-            game.ball.y = CANVAS_HEIGHT - 60;
+            game.ball.x = canvasSize.width / 2;
+            game.ball.y = canvasSize.height - 60;
             game.ball.dx = 4 + level * 0.5;
             game.ball.dy = -(4 + level * 0.5);
             game.ballLaunched = false;
@@ -197,13 +270,12 @@ const RetroGlassesBreaker = () => {
         });
       }
     } else {
-      // Ball follows paddle before launch
       game.ball.x = game.paddle.x + game.paddle.width / 2 - game.ball.size / 2;
     }
 
-    // Check level complete
     if (game.bricks.every(brick => !brick.visible)) {
       if (level === 4) {
+        createConfetti();
         setGameState('won');
       } else {
         setGameState('levelComplete');
@@ -214,35 +286,30 @@ const RetroGlassesBreaker = () => {
   const draw = (ctx) => {
     const game = gameRef.current;
     
-    // Background - retro gradient
-    const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvasSize.height);
     gradient.addColorStop(0, '#1a0033');
     gradient.addColorStop(1, '#0d001a');
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
-    // Grid effect
     ctx.strokeStyle = 'rgba(138, 43, 226, 0.1)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < CANVAS_WIDTH; i += 40) {
+    for (let i = 0; i < canvasSize.width; i += 40) {
       ctx.beginPath();
       ctx.moveTo(i, 0);
-      ctx.lineTo(i, CANVAS_HEIGHT);
+      ctx.lineTo(i, canvasSize.height);
       ctx.stroke();
     }
-    for (let i = 0; i < CANVAS_HEIGHT; i += 40) {
+    for (let i = 0; i < canvasSize.height; i += 40) {
       ctx.beginPath();
       ctx.moveTo(0, i);
-      ctx.lineTo(CANVAS_WIDTH, i);
+      ctx.lineTo(canvasSize.width, i);
       ctx.stroke();
     }
 
-    // Draw bricks
     game.bricks.forEach(brick => {
       if (brick.visible) {
-        const healthPercent = brick.health / brick.maxHealth;
-        const hue = healthPercent * 120;
-        ctx.fillStyle = `hsl(${280 + hue}, 80%, 60%)`;
+        ctx.fillStyle = brick.color;
         ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
         
         ctx.strokeStyle = '#fff';
@@ -254,17 +321,20 @@ const RetroGlassesBreaker = () => {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(brick.letter, brick.x + brick.width / 2, brick.y + brick.height / 2);
+        
+        if (brick.health < brick.maxHealth) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+        }
       }
     });
 
-    // Draw paddle with character
     ctx.fillStyle = '#00ff00';
     ctx.fillRect(game.paddle.x, game.paddle.y, game.paddle.width, game.paddle.height);
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
     ctx.strokeRect(game.paddle.x, game.paddle.y, game.paddle.width, game.paddle.height);
     
-    // Simple character on paddle
     ctx.fillStyle = '#ffff00';
     ctx.beginPath();
     ctx.arc(game.paddle.x + game.paddle.width / 2, game.paddle.y - 10, 8, 0, Math.PI * 2);
@@ -272,48 +342,69 @@ const RetroGlassesBreaker = () => {
     ctx.strokeStyle = '#fff';
     ctx.stroke();
 
-    // Draw ball as glasses
     ctx.save();
     ctx.translate(game.ball.x + game.ball.size / 2, game.ball.y + game.ball.size / 2);
     
-    // Glasses frame
-    ctx.strokeStyle = '#ff00ff';
+    const scale = 1.2;
+    ctx.scale(scale, scale);
+    
+    ctx.strokeStyle = '#000';
     ctx.lineWidth = 3;
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     
-    // Left lens
+    ctx.fillStyle = 'rgba(100, 200, 255, 0.4)';
     ctx.beginPath();
-    ctx.arc(-5, 0, 6, 0, Math.PI * 2);
+    ctx.arc(-8, 0, 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     
-    // Right lens
     ctx.beginPath();
-    ctx.arc(5, 0, 6, 0, Math.PI * 2);
+    ctx.arc(8, 0, 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     
-    // Bridge
     ctx.beginPath();
-    ctx.moveTo(-1, 0);
-    ctx.lineTo(1, 0);
+    ctx.moveTo(-2, -1);
+    ctx.lineTo(2, -1);
     ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(-16, 0);
+    ctx.lineTo(-20, 2);
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(16, 0);
+    ctx.lineTo(20, 2);
+    ctx.stroke();
+    
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.beginPath();
+    ctx.arc(-10, -2, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(6, -2, 2, 0, Math.PI * 2);
+    ctx.fill();
     
     ctx.restore();
 
-    // HUD
     ctx.fillStyle = '#00ffff';
     ctx.font = 'bold 20px "Courier New", monospace';
     ctx.textAlign = 'left';
     ctx.fillText(`NIVEAU: ${level}`, 20, 30);
     ctx.fillText(`SCORE: ${score}`, 20, 55);
-    ctx.fillText(`VIES: ${'❤️'.repeat(lives)}`, CANVAS_WIDTH - 150, 30);
+    ctx.fillText(`VIES: ${'❤️'.repeat(lives)}`, canvasSize.width - 150, 30);
 
     if (!game.ballLaunched) {
       ctx.fillStyle = '#ffff00';
-      ctx.font = 'bold 16px "Courier New", monospace';
+      ctx.font = `bold ${isMobile ? '14' : '16'}px "Courier New", monospace`;
       ctx.textAlign = 'center';
-      ctx.fillText('ESPACE OU CLIC POUR LANCER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      ctx.fillText(
+        isMobile ? 'TOUCHE L\'ÉCRAN POUR LANCER' : 'ESPACE OU CLIC POUR LANCER',
+        canvasSize.width / 2,
+        canvasSize.height / 2
+      );
     }
   };
 
@@ -338,36 +429,79 @@ const RetroGlassesBreaker = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-black p-4">
-      <div className="text-center">
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-black p-4" ref={containerRef}>
+      {confetti.map((c, i) => (
+        <div
+          key={i}
+          style={{
+            position: 'fixed',
+            left: c.x,
+            top: c.y,
+            width: c.size,
+            height: c.size,
+            backgroundColor: c.color,
+            transform: `rotate(${c.rotation}deg)`,
+            pointerEvents: 'none',
+            zIndex: 1000
+          }}
+        />
+      ))}
+
+      {showBrokenGlasses && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div className="bg-black bg-opacity-80 p-8 rounded-lg animate-pulse">
+            <svg width="200" height="100" viewBox="0 0 200 100">
+              <line x1="40" y1="50" x2="60" y2="30" stroke="#ff0000" strokeWidth="4" strokeLinecap="round"/>
+              <line x1="40" y1="30" x2="60" y2="50" stroke="#ff0000" strokeWidth="4" strokeLinecap="round"/>
+              <circle cx="50" cy="40" r="18" fill="none" stroke="#333" strokeWidth="3"/>
+              
+              <line x1="140" y1="50" x2="160" y2="30" stroke="#ff0000" strokeWidth="4" strokeLinecap="round"/>
+              <line x1="140" y1="30" x2="160" y2="50" stroke="#ff0000" strokeWidth="4" strokeLinecap="round"/>
+              <circle cx="150" cy="40" r="18" fill="none" stroke="#333" strokeWidth="3"/>
+              
+              <line x1="68" y1="38" x2="132" y2="38" stroke="#333" strokeWidth="3"/>
+              
+              <line x1="32" y1="40" x2="15" y2="45" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
+              <line x1="168" y1="40" x2="185" y2="45" stroke="#333" strokeWidth="3" strokeLinecap="round"/>
+            </svg>
+            <p className="text-red-500 text-2xl font-bold text-center mt-4" style={{fontFamily: '"Courier New", monospace'}}>
+              CASSÉES !
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="text-center relative z-10 w-full max-w-4xl">
         {gameState === 'email' && (
-          <div className="bg-black border-4 border-cyan-400 p-8 rounded-lg shadow-2xl max-w-md">
-            <h1 className="text-5xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500" style={{fontFamily: '"Courier New", monospace'}}>
+          <div className="bg-black border-4 border-cyan-400 p-4 md:p-8 rounded-lg shadow-2xl mx-auto">
+            <h1 className="text-3xl md:text-5xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500" style={{fontFamily: '"Courier New", monospace'}}>
               CASSE-LUNETTES
             </h1>
-            <p className="text-cyan-300 mb-6 text-lg" style={{fontFamily: '"Courier New", monospace'}}>
+            <p className="text-cyan-300 mb-6 text-base md:text-lg" style={{fontFamily: '"Courier New", monospace'}}>
               ÉDITION RÉTRO
             </p>
-            <div className="space-y-4">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleEmailSubmit()}
-                placeholder="Votre email"
-                className="w-full px-4 py-3 bg-purple-900 border-2 border-pink-500 text-white rounded focus:outline-none focus:border-cyan-400 text-lg"
-                style={{fontFamily: '"Courier New", monospace'}}
+            <div className="w-full overflow-hidden">
+              <iframe 
+                width="100%" 
+                height="305" 
+                src="https://8c9f608f.sibforms.com/serve/MUIFACSgk_RunEKwwHmTDkfeMmnE-9A5yybtCzsDbgKqXAgrndevEnlf5tnM13NR-DtUimmmbMYPou8Q8U9kyS9akqqOasbVCI9iWMCGYNRd5oOo2p9SGQJOHJdtifgnPEZqhmT3LWp6i0YNBQubGGDF1QJntL8ISBou9ohbklsOM9HCm-VzI-XMdJ0B07vryiGuy3Rgqv5nh5bT" 
+                frameBorder="0" 
+                scrolling="auto" 
+                allowFullScreen 
+                style={{display: 'block', marginLeft: 'auto', marginRight: 'auto', maxWidth: '100%'}}
               />
-              {emailError && <p className="text-red-400 text-sm">{emailError}</p>}
-              <button
-                onClick={handleEmailSubmit}
-                className="w-full bg-gradient-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded font-bold text-xl hover:from-pink-600 hover:to-purple-700 transform hover:scale-105 transition-all shadow-lg"
-                style={{fontFamily: '"Courier New", monospace'}}
-              >
-                JOUER
-              </button>
             </div>
-            <p className="text-gray-400 text-sm mt-4" style={{fontFamily: '"Courier New", monospace'}}>
+            <button
+              onClick={() => {
+                setGameState('playing');
+                initGame();
+              }}
+              className="mt-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded font-bold text-lg md:text-xl hover:from-pink-600 hover:to-purple-700 transform hover:scale-105 transition-all shadow-lg w-full md:w-auto"
+              style={{fontFamily: '"Courier New", monospace'}}
+            >
+              COMMENCER À JOUER
+            </button>
+            <p className="text-gray-400 text-xs md:text-sm mt-4" style={{fontFamily: '"Courier New", monospace'}}>
               Termine les 4 niveaux pour gagner !
             </p>
           </div>
@@ -377,28 +511,29 @@ const RetroGlassesBreaker = () => {
           <div>
             <canvas
               ref={canvasRef}
-              width={CANVAS_WIDTH}
-              height={CANVAS_HEIGHT}
+              width={canvasSize.width}
+              height={canvasSize.height}
               onClick={handleCanvasClick}
-              className="border-4 border-cyan-400 rounded-lg shadow-2xl cursor-pointer"
+              className="border-4 border-cyan-400 rounded-lg shadow-2xl cursor-pointer mx-auto touch-none"
+              style={{ maxWidth: '100%', height: 'auto' }}
             />
-            <p className="text-cyan-300 mt-4 text-lg" style={{fontFamily: '"Courier New", monospace'}}>
-              ← → ou SOURIS pour bouger | ESPACE pour lancer
+            <p className="text-cyan-300 mt-4 text-sm md:text-lg" style={{fontFamily: '"Courier New", monospace'}}>
+              {isMobile ? '👆 Glisse ton doigt pour bouger' : '← → ou SOURIS pour bouger | ESPACE pour lancer'}
             </p>
           </div>
         )}
 
         {gameState === 'levelComplete' && (
-          <div className="bg-black border-4 border-green-400 p-8 rounded-lg shadow-2xl max-w-md animate-pulse">
-            <h2 className="text-5xl font-bold text-green-400 mb-4" style={{fontFamily: '"Courier New", monospace'}}>
+          <div className="bg-black border-4 border-green-400 p-6 md:p-8 rounded-lg shadow-2xl max-w-md mx-auto animate-pulse">
+            <h2 className="text-3xl md:text-5xl font-bold text-green-400 mb-4" style={{fontFamily: '"Courier New", monospace'}}>
               NIVEAU {level} TERMINÉ !
             </h2>
-            <p className="text-white text-2xl mb-6" style={{fontFamily: '"Courier New", monospace'}}>
+            <p className="text-white text-xl md:text-2xl mb-6" style={{fontFamily: '"Courier New", monospace'}}>
               Score: {score}
             </p>
             <button
               onClick={nextLevel}
-              className="bg-gradient-to-r from-green-500 to-blue-600 text-white px-8 py-4 rounded-lg font-bold text-xl hover:from-green-600 hover:to-blue-700 transform hover:scale-105 transition-all shadow-lg"
+              className="bg-gradient-to-r from-green-500 to-blue-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-lg font-bold text-lg md:text-xl hover:from-green-600 hover:to-blue-700 transform hover:scale-105 transition-all shadow-lg w-full md:w-auto"
               style={{fontFamily: '"Courier New", monospace'}}
             >
               NIVEAU SUIVANT
@@ -407,19 +542,19 @@ const RetroGlassesBreaker = () => {
         )}
 
         {gameState === 'gameOver' && (
-          <div className="bg-black border-4 border-red-400 p-8 rounded-lg shadow-2xl max-w-md">
-            <h2 className="text-5xl font-bold text-red-400 mb-4" style={{fontFamily: '"Courier New", monospace'}}>
+          <div className="bg-black border-4 border-red-400 p-6 md:p-8 rounded-lg shadow-2xl max-w-md mx-auto">
+            <h2 className="text-3xl md:text-5xl font-bold text-red-400 mb-4" style={{fontFamily: '"Courier New", monospace'}}>
               GAME OVER
             </h2>
-            <p className="text-white text-2xl mb-2" style={{fontFamily: '"Courier New", monospace'}}>
+            <p className="text-white text-xl md:text-2xl mb-2" style={{fontFamily: '"Courier New", monospace'}}>
               Niveau atteint: {level}
             </p>
-            <p className="text-white text-2xl mb-6" style={{fontFamily: '"Courier New", monospace'}}>
+            <p className="text-white text-xl md:text-2xl mb-6" style={{fontFamily: '"Courier New", monospace'}}>
               Score final: {score}
             </p>
             <button
               onClick={restartGame}
-              className="bg-gradient-to-r from-red-500 to-orange-600 text-white px-8 py-4 rounded-lg font-bold text-xl hover:from-red-600 hover:to-orange-700 transform hover:scale-105 transition-all shadow-lg"
+              className="bg-gradient-to-r from-red-500 to-orange-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-lg font-bold text-lg md:text-xl hover:from-red-600 hover:to-orange-700 transform hover:scale-105 transition-all shadow-lg w-full md:w-auto"
               style={{fontFamily: '"Courier New", monospace'}}
             >
               RÉESSAYER
@@ -428,30 +563,35 @@ const RetroGlassesBreaker = () => {
         )}
 
         {gameState === 'won' && (
-          <div className="bg-black border-4 border-yellow-400 p-8 rounded-lg shadow-2xl max-w-md animate-pulse">
-            <h2 className="text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 mb-4" style={{fontFamily: '"Courier New", monospace'}}>
+          <div className="bg-black border-4 border-yellow-400 p-6 md:p-8 rounded-lg shadow-2xl max-w-md mx-auto animate-pulse">
+            <h2 className="text-4xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 mb-4" style={{fontFamily: '"Courier New", monospace'}}>
               FÉLICITATIONS !
             </h2>
-            <p className="text-cyan-300 text-3xl mb-4 font-bold" style={{fontFamily: '"Courier New", monospace'}}>
+            <p className="text-cyan-300 text-2xl md:text-3xl mb-4 font-bold" style={{fontFamily: '"Courier New", monospace'}}>
               UNE SURPRISE T'ATTEND
             </p>
-            <p className="text-white text-xl mb-2" style={{fontFamily: '"Courier New", monospace'}}>
+            <p className="text-white text-lg md:text-xl mb-2" style={{fontFamily: '"Courier New", monospace'}}>
               EN MAGASIN
             </p>
-            <div className="bg-purple-900 border-2 border-cyan-400 p-4 rounded-lg my-6">
-              <p className="text-gray-300 text-sm mb-2" style={{fontFamily: '"Courier New", monospace'}}>
-                Confirmation envoyée à:
+            
+            <div className="bg-gradient-to-r from-yellow-400 to-orange-500 border-4 border-white p-4 md:p-6 rounded-lg my-6 shadow-2xl">
+              <p className="text-black text-xs md:text-sm font-bold mb-2" style={{fontFamily: '"Courier New", monospace'}}>
+                TON CODE GAGNANT :
               </p>
-              <p className="text-green-400 text-lg font-bold break-all" style={{fontFamily: '"Courier New", monospace'}}>
-                {email}
+              <p className="text-black text-2xl md:text-4xl font-bold tracking-wider break-all" style={{fontFamily: '"Courier New", monospace'}}>
+                cassebrique2026
+              </p>
+              <p className="text-black text-xs mt-2" style={{fontFamily: '"Courier New", monospace'}}>
+                Présente ce code en magasin
               </p>
             </div>
-            <p className="text-white text-2xl mb-6" style={{fontFamily: '"Courier New", monospace'}}>
+            
+            <p className="text-white text-xl md:text-2xl mb-6" style={{fontFamily: '"Courier New", monospace'}}>
               Score final: {score}
             </p>
             <button
               onClick={restartGame}
-              className="bg-gradient-to-r from-purple-500 to-pink-600 text-white px-8 py-4 rounded-lg font-bold text-xl hover:from-purple-600 hover:to-pink-700 transform hover:scale-105 transition-all shadow-lg"
+              className="bg-gradient-to-r from-purple-500 to-pink-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-lg font-bold text-lg md:text-xl hover:from-purple-600 hover:to-pink-700 transform hover:scale-105 transition-all shadow-lg w-full md:w-auto"
               style={{fontFamily: '"Courier New", monospace'}}
             >
               REJOUER
