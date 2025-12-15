@@ -1,346 +1,683 @@
-import React, { useState, useEffect, useRef } from 'react';
-
-const RetroGlassesBreaker = () => {
-  const canvasRef = useRef(null);
-  const containerRef = useRef(null);
-  const requestRef = useRef(null);
-
-  const [gameState, setGameState] = useState('email'); // email / playing / levelComplete / gameOver / won
-  const [level, setLevel] = useState(1);
-  const [score, setScore] = useState(0);
-  const [lives, setLives] = useState(3);
-  const [showBrokenGlasses, setShowBrokenGlasses] = useState(false);
-  const [confetti, setConfetti] = useState([]);
-  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
-
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-  const PADDLE_WIDTH = 100;
-  const PADDLE_HEIGHT = 20;
-  const BALL_SIZE = 30;
-  const BRICK_COLS = 8;
-  const BRICK_PADDING = 5;
-  const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const BRICK_COLORS = [
-    '#FF006E', '#8338EC', '#3A86FF', '#FB5607',
-    '#FFBE0B', '#06FFA5', '#FF006E', '#8338EC'
-  ];
-
-  const gameRef = useRef({
-    paddle: { x: 0, y: 0, width: PADDLE_WIDTH, height: PADDLE_HEIGHT },
-    ball: { x: 0, y: 0, dx: 4, dy: -4, size: BALL_SIZE },
-    bricks: [],
-    keys: {},
-    mouseX: 0,
-    touchX: null,
-    ballLaunched: false
-  });
-
-  // Canvas responsive
-  useEffect(() => {
-    const updateSize = () => {
-      const maxWidth = window.innerWidth - 20;
-      const maxHeight = window.innerHeight * 0.7;
-      const aspectRatio = 800 / 600;
-      let width = maxWidth;
-      let height = width / aspectRatio;
-      if (height > maxHeight) {
-        height = maxHeight;
-        width = height * aspectRatio;
-      }
-      setCanvasSize({ width: Math.floor(width), height: Math.floor(height) });
-    };
-    updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
-  }, []);
-
-  // Initialize bricks
-  const initBricks = () => {
-    const bricks = [];
-    const rows = 5 + level;
-    const brickWidth = (canvasSize.width - 70) / BRICK_COLS - BRICK_PADDING;
-    const brickHeight = 30;
-    const offsetTop = 80;
-    const offsetLeft = 35;
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < BRICK_COLS; col++) {
-        const health = level === 4 ? 2 : 1;
-        bricks.push({
-          x: offsetLeft + col * (brickWidth + BRICK_PADDING),
-          y: offsetTop + row * (brickHeight + BRICK_PADDING),
-          width: brickWidth,
-          height: brickHeight,
-          health,
-          maxHealth: health,
-          letter: LETTERS[Math.floor(Math.random() * LETTERS.length)],
-          color: BRICK_COLORS[col % BRICK_COLORS.length],
-          visible: true
-        });
-      }
-    }
-    return bricks;
-  };
-
-  const initGame = () => {
-    const game = gameRef.current;
-    game.paddle.x = canvasSize.width / 2 - PADDLE_WIDTH / 2;
-    game.paddle.y = canvasSize.height - 40;
-    game.ball.x = canvasSize.width / 2;
-    game.ball.y = canvasSize.height - 60;
-    game.ball.dx = 4 + level * 0.5;
-    game.ball.dy = -(4 + level * 0.5);
-    game.mouseX = canvasSize.width / 2;
-    game.touchX = null;
-    game.bricks = initBricks();
-    game.ballLaunched = false;
-  };
-
-  // Confetti
-  const createConfetti = () => {
-    const newConfetti = [];
-    for (let i = 0; i < 150; i++) {
-      newConfetti.push({
-        x: Math.random() * canvasSize.width,
-        y: -10,
-        vx: (Math.random() - 0.5) * 4,
-        vy: Math.random() * 3 + 2,
-        color: BRICK_COLORS[Math.floor(Math.random() * BRICK_COLORS.length)],
-        size: Math.random() * 8 + 4,
-        rotation: Math.random() * 360
-      });
-    }
-    setConfetti(newConfetti);
-  };
-
-  useEffect(() => {
-    if (gameState === 'won' && confetti.length > 0) {
-      const interval = setInterval(() => {
-        setConfetti(prev =>
-          prev.map(c => ({ ...c, x: c.x + c.vx, y: c.y + c.vy, rotation: c.rotation + 5 }))
-            .filter(c => c.y < canvasSize.height)
-        );
-      }, 30);
-      return () => clearInterval(interval);
-    }
-  }, [gameState, confetti.length, canvasSize.height]);
-
-  // Game loop
-  useEffect(() => {
-    if (gameState === 'playing') {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-
-      const handleKeyDown = e => {
-        gameRef.current.keys[e.key] = true;
-        if (e.key === ' ' && !gameRef.current.ballLaunched) gameRef.current.ballLaunched = true;
-      };
-      const handleKeyUp = e => gameRef.current.keys[e.key] = false;
-
-      const handleMouseMove = e => {
-        const rect = canvas.getBoundingClientRect();
-        gameRef.current.mouseX = (e.clientX - rect.left) * (canvasSize.width / rect.width);
-      };
-
-      const handleTouchStart = e => {
-        e.preventDefault();
-        const rect = canvas.getBoundingClientRect();
-        const touch = e.touches[0];
-        gameRef.current.touchX = (touch.clientX - rect.left) * (canvasSize.width / rect.width);
-        if (!gameRef.current.ballLaunched) gameRef.current.ballLaunched = true;
-      };
-      const handleTouchMove = e => {
-        e.preventDefault();
-        const rect = canvas.getBoundingClientRect();
-        const touch = e.touches[0];
-        gameRef.current.touchX = (touch.clientX - rect.left) * (canvasSize.width / rect.width);
-      };
-      const handleTouchEnd = e => { e.preventDefault(); gameRef.current.touchX = null; };
-
-      window.addEventListener('keydown', handleKeyDown);
-      window.addEventListener('keyup', handleKeyUp);
-      canvas.addEventListener('mousemove', handleMouseMove);
-      canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-      canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-      canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-
-      const gameLoop = () => {
-        update();
-        draw(ctx);
-        requestRef.current = requestAnimationFrame(gameLoop);
-      };
-      gameLoop();
-
-      return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-        window.removeEventListener('keyup', handleKeyUp);
-        canvas.removeEventListener('mousemove', handleMouseMove);
-        canvas.removeEventListener('touchstart', handleTouchStart);
-        canvas.removeEventListener('touchmove', handleTouchMove);
-        canvas.removeEventListener('touchend', handleTouchEnd);
-        if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      };
-    }
-  }, [gameState, level, lives, canvasSize]);
-
-  // Update game
-  const update = () => {
-    const game = gameRef.current;
-
-    if (game.keys['ArrowLeft']) game.paddle.x -= 8;
-    if (game.keys['ArrowRight']) game.paddle.x += 8;
-
-    const targetX = game.touchX !== null ? game.touchX : game.mouseX;
-    game.paddle.x = Math.max(0, Math.min(canvasSize.width - game.paddle.width, targetX - game.paddle.width / 2));
-
-    if (game.ballLaunched) {
-      game.ball.x += game.ball.dx;
-      game.ball.y += game.ball.dy;
-
-      if (game.ball.x <= 0 || game.ball.x >= canvasSize.width - game.ball.size) game.ball.dx = -game.ball.dx;
-      if (game.ball.y <= 0) game.ball.dy = -game.ball.dy;
-
-      // Paddle collision
-      if (
-        game.ball.y + game.ball.size >= game.paddle.y &&
-        game.ball.y <= game.paddle.y + game.paddle.height &&
-        game.ball.x + game.ball.size >= game.paddle.x &&
-        game.ball.x <= game.paddle.x + game.paddle.width
-      ) {
-        game.ball.dy = -Math.abs(game.ball.dy);
-        const hitPos = (game.ball.x - game.paddle.x) / game.paddle.width;
-        game.ball.dx = (hitPos - 0.5) * 10;
-      }
-
-      // Bricks collision
-      game.bricks.forEach(brick => {
-        if (brick.visible &&
-          game.ball.x + game.ball.size > brick.x &&
-          game.ball.x < brick.x + brick.width &&
-          game.ball.y + game.ball.size > brick.y &&
-          game.ball.y < brick.y + brick.height
-        ) {
-          game.ball.dy = -game.ball.dy;
-          brick.health--;
-          if (brick.health <= 0) { brick.visible = false; setScore(s => s + level * 10); }
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casse-Lunettes Rétro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-      });
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #4a148c 0%, #1a237e 50%, #000000 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        #game-container {
+            text-align: center;
+            position: relative;
+            z-index: 10;
+            padding: 20px;
+            max-width: 100%;
+        }
+        
+        canvas {
+            border: 4px solid #00ffff;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            cursor: pointer;
+            max-width: 100%;
+            height: auto;
+            touch-action: none;
+        }
+        
+        .screen {
+            background: #000;
+            border: 4px solid #00ffff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            font-size: 3em;
+            background: linear-gradient(to right, #ff0080, #8b00ff, #00ffff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+        }
+        
+        h2 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+        
+        .subtitle {
+            color: #00ffff;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+        }
+        
+        button {
+            background: linear-gradient(to right, #ff0080, #8b00ff);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: transform 0.2s;
+            margin: 10px;
+            width: 100%;
+            max-width: 300px;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+        
+        .info-text {
+            color: #00ffff;
+            margin: 20px 0;
+            font-size: 1em;
+        }
+        
+        .code-box {
+            background: linear-gradient(to right, #ffbe0b, #ff9500);
+            border: 4px solid white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .code-box p {
+            color: #000;
+            margin: 5px 0;
+        }
+        
+        .code-text {
+            font-size: 2em;
+            font-weight: bold;
+            letter-spacing: 2px;
+            word-break: break-all;
+        }
+        
+        .confetti {
+            position: fixed;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .broken-glasses {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 10px;
+            z-index: 50;
+            animation: pulse 0.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .green { color: #00ff00; }
+        .red { color: #ff0000; }
+        .yellow { color: #ffff00; }
+        .cyan { color: #00ffff; }
+        .gray { color: #888; }
+        
+        @media (max-width: 768px) {
+            h1 { font-size: 2em; }
+            h2 { font-size: 1.8em; }
+            .screen { padding: 20px; }
+            button { font-size: 1em; padding: 12px 30px; }
+            .code-text { font-size: 1.5em; }
+        }
+        
+        iframe {
+            max-width: 100%;
+            border: none;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
 
-      if (game.ball.y > canvasSize.height) {
-        setShowBrokenGlasses(true);
-        setTimeout(() => setShowBrokenGlasses(false), 1500);
-
-        setLives(l => {
-          const newLives = l - 1;
-          if (newLives <= 0) setGameState('gameOver');
-          else {
-            game.ball.x = canvasSize.width / 2;
-            game.ball.y = canvasSize.height - 60;
+    <script>
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        let gameState = 'email';
+        let level = 1;
+        let score = 0;
+        let lives = 3;
+        let confettiArray = [];
+        let canvasWidth = 800;
+        let canvasHeight = 600;
+        
+        const PADDLE_WIDTH = 100;
+        const PADDLE_HEIGHT = 20;
+        const BALL_SIZE = 30;
+        const BRICK_COLS = 8;
+        const BRICK_PADDING = 5;
+        const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const BRICK_COLORS = ['#FF006E', '#8338EC', '#3A86FF', '#FB5607', '#FFBE0B', '#06FFA5', '#FF006E', '#8338EC'];
+        
+        const game = {
+            paddle: { x: 0, y: 0, width: PADDLE_WIDTH, height: PADDLE_HEIGHT },
+            ball: { x: 0, y: 0, dx: 4, dy: -4, size: BALL_SIZE },
+            bricks: [],
+            keys: {},
+            mouseX: 0,
+            touchX: null,
+            ballLaunched: false
+        };
+        
+        function updateCanvasSize() {
+            const isPortrait = window.innerHeight > window.innerWidth;
+            
+            if (isMobile && isPortrait) {
+                // Mode portrait mobile : canvas plus haut
+                canvasWidth = Math.min(window.innerWidth - 20, 500);
+                canvasHeight = Math.min(window.innerHeight * 0.75, 700);
+            } else {
+                // Mode paysage ou desktop
+                const maxWidth = window.innerWidth < 850 ? window.innerWidth - 20 : 800;
+                const maxHeight = window.innerHeight < 650 ? window.innerHeight * 0.7 : 600;
+                const aspectRatio = 800 / 600;
+                
+                let width = maxWidth;
+                let height = width / aspectRatio;
+                
+                if (height > maxHeight) {
+                    height = maxHeight;
+                    width = height * aspectRatio;
+                }
+                
+                canvasWidth = Math.floor(width);
+                canvasHeight = Math.floor(height);
+            }
+        }
+        
+        function initBricks() {
+            const bricks = [];
+            const rows = 5 + level;
+            const brickWidth = (canvasWidth - 70) / BRICK_COLS - BRICK_PADDING;
+            const brickHeight = isMobile && window.innerHeight > window.innerWidth ? 25 : 30;
+            const offsetTop = isMobile && window.innerHeight > window.innerWidth ? 60 : 80;
+            const offsetLeft = 35;
+            
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < BRICK_COLS; col++) {
+                    const health = level === 4 ? 2 : 1;
+                    bricks.push({
+                        x: offsetLeft + col * (brickWidth + BRICK_PADDING),
+                        y: offsetTop + row * (brickHeight + BRICK_PADDING),
+                        width: brickWidth,
+                        height: brickHeight,
+                        health: health,
+                        maxHealth: health,
+                        letter: LETTERS[Math.floor(Math.random() * LETTERS.length)],
+                        color: BRICK_COLORS[col % BRICK_COLORS.length],
+                        visible: true
+                    });
+                }
+            }
+            return bricks;
+        }
+        
+        function initGame() {
+            updateCanvasSize();
+            game.paddle.x = canvasWidth / 2 - PADDLE_WIDTH / 2;
+            game.paddle.y = canvasHeight - 40;
+            game.ball.x = canvasWidth / 2;
+            game.ball.y = canvasHeight - 60;
             game.ball.dx = 4 + level * 0.5;
             game.ball.dy = -(4 + level * 0.5);
+            game.mouseX = canvasWidth / 2;
+            game.touchX = null;
+            game.bricks = initBricks();
             game.ballLaunched = false;
-          }
-          return newLives;
+        }
+        
+        function createConfetti() {
+            confettiArray = [];
+            for (let i = 0; i < 150; i++) {
+                confettiArray.push({
+                    x: Math.random() * window.innerWidth,
+                    y: -10,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: Math.random() * 3 + 2,
+                    color: BRICK_COLORS[Math.floor(Math.random() * BRICK_COLORS.length)],
+                    size: Math.random() * 8 + 4,
+                    rotation: Math.random() * 360
+                });
+            }
+        }
+        
+        function updateConfetti() {
+            const container = document.getElementById('game-container');
+            container.querySelectorAll('.confetti').forEach(el => el.remove());
+            
+            confettiArray = confettiArray.map(c => ({
+                ...c,
+                x: c.x + c.vx,
+                y: c.y + c.vy,
+                rotation: c.rotation + 5
+            })).filter(c => c.y < window.innerHeight);
+            
+            confettiArray.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'confetti';
+                div.style.left = c.x + 'px';
+                div.style.top = c.y + 'px';
+                div.style.width = c.size + 'px';
+                div.style.height = c.size + 'px';
+                div.style.backgroundColor = c.color;
+                div.style.transform = `rotate(${c.rotation}deg)`;
+                container.appendChild(div);
+            });
+        }
+        
+        function showEmailScreen() {
+            document.getElementById('game-container').innerHTML = `
+                <div class="screen">
+                    <h1>CASSE-LUNETTES</h1>
+                    <p class="subtitle">ÉDITION RÉTRO</p>
+                    <iframe 
+                        width="100%" 
+                        height="305" 
+                        src="https://8c9f608f.sibforms.com/serve/MUIFACSgk_RunEKwwHmTDkfeMmnE-9A5yybtCzsDbgKqXAgrndevEnlf5tnM13NR-DtUimmmbMYPou8Q8U9kyS9akqqOasbVCI9iWMCGYNRd5oOo2p9SGQJOHJdtifgnPEZqhmT3LWp6i0YNBQubGGDF1QJntL8ISBou9ohbklsOM9HCm-VzI-XMdJ0B07vryiGuy3Rgqv5nh5bT" 
+                        scrolling="auto" 
+                        allowfullscreen
+                    ></iframe>
+                    <button onclick="startGame()">COMMENCER À JOUER</button>
+                    <p class="gray" style="margin-top: 20px; font-size: 0.9em;">Termine les 4 niveaux pour gagner !</p>
+                </div>
+            `;
+        }
+        
+        function showGameScreen() {
+            const canvas = document.createElement('canvas');
+            canvas.id = 'gameCanvas';
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            
+            document.getElementById('game-container').innerHTML = '';
+            document.getElementById('game-container').appendChild(canvas);
+            
+            const info = document.createElement('p');
+            info.className = 'info-text';
+            info.textContent = isMobile ? '👆 Glisse ton doigt pour bouger' : '← → ou SOURIS pour bouger | ESPACE pour lancer';
+            document.getElementById('game-container').appendChild(info);
+            
+            setupGameCanvas(canvas);
+            gameLoop();
+        }
+        
+        function setupGameCanvas(canvas) {
+            const ctx = canvas.getContext('2d');
+            
+            window.addEventListener('keydown', (e) => {
+                game.keys[e.key] = true;
+                if (e.key === ' ' && !game.ballLaunched) {
+                    game.ballLaunched = true;
+                }
+            });
+            
+            window.addEventListener('keyup', (e) => {
+                game.keys[e.key] = false;
+            });
+            
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                game.mouseX = (e.clientX - rect.left) * (canvasWidth / rect.width);
+            });
+            
+            canvas.addEventListener('click', () => {
+                if (!game.ballLaunched) {
+                    game.ballLaunched = true;
+                }
+            });
+            
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (!game.ballLaunched) {
+                    game.ballLaunched = true;
+                }
+            }, { passive: false });
+            
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                game.touchX = (touch.clientX - rect.left) * (canvasWidth / rect.width);
+            }, { passive: false });
+            
+            canvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                game.touchX = null;
+            }, { passive: false });
+        }
+        
+        function update() {
+            if (game.keys['ArrowLeft'] && game.paddle.x > 0) {
+                game.paddle.x -= 8;
+            }
+            if (game.keys['ArrowRight'] && game.paddle.x < canvasWidth - game.paddle.width) {
+                game.paddle.x += 8;
+            }
+            
+            const targetX = game.touchX !== null ? game.touchX : game.mouseX;
+            game.paddle.x = Math.max(0, Math.min(canvasWidth - game.paddle.width, targetX - game.paddle.width / 2));
+            
+            if (game.ballLaunched) {
+                game.ball.x += game.ball.dx;
+                game.ball.y += game.ball.dy;
+                
+                if (game.ball.x <= 0 || game.ball.x >= canvasWidth - game.ball.size) {
+                    game.ball.dx = -game.ball.dx;
+                }
+                if (game.ball.y <= 0) {
+                    game.ball.dy = -game.ball.dy;
+                }
+                
+                if (game.ball.y + game.ball.size >= game.paddle.y &&
+                    game.ball.y <= game.paddle.y + game.paddle.height &&
+                    game.ball.x + game.ball.size >= game.paddle.x &&
+                    game.ball.x <= game.paddle.x + game.paddle.width) {
+                    game.ball.dy = -Math.abs(game.ball.dy);
+                    const hitPos = (game.ball.x - game.paddle.x) / game.paddle.width;
+                    game.ball.dx = (hitPos - 0.5) * 10;
+                }
+                
+                game.bricks.forEach(brick => {
+                    if (brick.visible &&
+                        game.ball.x + game.ball.size > brick.x &&
+                        game.ball.x < brick.x + brick.width &&
+                        game.ball.y + game.ball.size > brick.y &&
+                        game.ball.y < brick.y + brick.height) {
+                        game.ball.dy = -game.ball.dy;
+                        brick.health--;
+                        if (brick.health <= 0) {
+                            brick.visible = false;
+                            score += level * 10;
+                        }
+                    }
+                });
+                
+                if (game.ball.y > canvasHeight) {
+                    showBrokenGlasses();
+                    lives--;
+                    if (lives <= 0) {
+                        gameState = 'gameOver';
+                        showGameOverScreen();
+                    } else {
+                        game.ball.x = canvasWidth / 2;
+                        game.ball.y = canvasHeight - 60;
+                        game.ball.dx = 4 + level * 0.5;
+                        game.ball.dy = -(4 + level * 0.5);
+                        game.ballLaunched = false;
+                    }
+                }
+            } else {
+                game.ball.x = game.paddle.x + game.paddle.width / 2 - game.ball.size / 2;
+            }
+            
+            if (game.bricks.every(brick => !brick.visible)) {
+                if (level === 4) {
+                    gameState = 'won';
+                    createConfetti();
+                    showWinScreen();
+                } else {
+                    gameState = 'levelComplete';
+                    showLevelCompleteScreen();
+                }
+            }
+        }
+        
+        function draw() {
+            const canvas = document.getElementById('gameCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
+            gradient.addColorStop(0, '#1a0033');
+            gradient.addColorStop(1, '#0d001a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            
+            ctx.strokeStyle = 'rgba(138, 43, 226, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvasWidth; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, canvasHeight);
+                ctx.stroke();
+            }
+            for (let i = 0; i < canvasHeight; i += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvasWidth, i);
+                ctx.stroke();
+            }
+            
+            game.bricks.forEach(brick => {
+                if (brick.visible) {
+                    ctx.fillStyle = brick.color;
+                    ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(brick.x, brick.y, brick.width, brick.height);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 20px "Courier New", monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(brick.letter, brick.x + brick.width / 2, brick.y + brick.height / 2);
+                    
+                    if (brick.health < brick.maxHealth) {
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                        ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+                    }
+                }
+            });
+            
+            ctx.fillStyle = '#00ff00';
+            ctx.fillRect(game.paddle.x, game.paddle.y, game.paddle.width, game.paddle.height);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(game.paddle.x, game.paddle.y, game.paddle.width, game.paddle.height);
+            
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.arc(game.paddle.x + game.paddle.width / 2, game.paddle.y - 10, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+            
+            ctx.save();
+            ctx.translate(game.ball.x + game.ball.size / 2, game.ball.y + game.ball.size / 2);
+            ctx.scale(1.2, 1.2);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.fillStyle = 'rgba(100, 200, 255, 0.4)';
+            ctx.beginPath();
+            ctx.arc(-8, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(8, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-2, -1);
+            ctx.lineTo(2, -1);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-16, 0);
+            ctx.lineTo(-20, 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(16, 0);
+            ctx.lineTo(20, 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.beginPath();
+            ctx.arc(-10, -2, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(6, -2, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            
+            ctx.fillStyle = '#00ffff';
+            ctx.font = 'bold 20px "Courier New", monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText(`NIVEAU: ${level}`, 20, 30);
+            ctx.fillText(`SCORE: ${score}`, 20, 55);
+            ctx.fillText(`VIES: ${'❤️'.repeat(lives)}`, canvasWidth - 150, 30);
+            
+            if (!game.ballLaunched) {
+                ctx.fillStyle = '#ffff00';
+                ctx.font = `bold ${isMobile ? '12' : '16'}px "Courier New", monospace`;
+                ctx.textAlign = 'center';
+                const text = isMobile ? 'TOUCHE POUR LANCER' : 'ESPACE OU CLIC POUR LANCER';
+                const yPos = isMobile ? canvasHeight - 100 : canvasHeight / 2;
+                
+                // Background pour le texte
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                const textWidth = ctx.measureText(text).width;
+                ctx.fillRect(canvasWidth / 2 - textWidth / 2 - 10, yPos - 20, textWidth + 20, 30);
+                
+                ctx.fillStyle = '#ffff00';
+                ctx.fillText(text, canvasWidth / 2, yPos);
+            }
+        }
+        
+        function gameLoop() {
+            if (gameState === 'playing') {
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            } else if (gameState === 'won') {
+                updateConfetti();
+                setTimeout(() => gameLoop(), 30);
+            }
+        }
+        
+        function showBrokenGlasses() {
+            const div = document.createElement('div');
+            div.className = 'broken-glasses';
+            div.innerHTML = `
+                <svg width="200" height="100" viewBox="0 0 200 100">
+                    <line x1="40" y1="50" x2="60" y2="30" stroke="#ff0000" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="40" y1="30" x2="60" y2="50" stroke="#ff0000" stroke-width="4" stroke-linecap="round"/>
+                    <circle cx="50" cy="40" r="18" fill="none" stroke="#333" stroke-width="3"/>
+                    <line x1="140" y1="50" x2="160" y2="30" stroke="#ff0000" stroke-width="4" stroke-linecap="round"/>
+                    <line x1="140" y1="30" x2="160" y2="50" stroke="#ff0000" stroke-width="4" stroke-linecap="round"/>
+                    <circle cx="150" cy="40" r="18" fill="none" stroke="#333" stroke-width="3"/>
+                    <line x1="68" y1="38" x2="132" y2="38" stroke="#333" stroke-width="3"/>
+                    <line x1="32" y1="40" x2="15" y2="45" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+                    <line x1="168" y1="40" x2="185" y2="45" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+                <p class="red" style="font-size: 1.5em; font-weight: bold; text-align: center; margin-top: 20px;">CASSÉES !</p>
+            `;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 1500);
+        }
+        
+        function showLevelCompleteScreen() {
+            document.getElementById('game-container').innerHTML = `
+                <div class="screen">
+                    <h2 class="green">NIVEAU ${level} TERMINÉ !</h2>
+                    <p style="color: white; font-size: 1.5em; margin: 20px 0;">Score: ${score}</p>
+                    <button onclick="nextLevel()">NIVEAU SUIVANT</button>
+                </div>
+            `;
+        }
+        
+        function showGameOverScreen() {
+            document.getElementById('game-container').innerHTML = `
+                <div class="screen">
+                    <h2 class="red">GAME OVER</h2>
+                    <p style="color: white; font-size: 1.5em; margin: 10px 0;">Niveau atteint: ${level}</p>
+                    <p style="color: white; font-size: 1.5em; margin: 10px 0;">Score final: ${score}</p>
+                    <button onclick="restartGame()">RÉESSAYER</button>
+                </div>
+            `;
+        }
+        
+        function showWinScreen() {
+            document.getElementById('game-container').innerHTML = `
+                <div class="screen">
+                    <h1 style="background: linear-gradient(to right, #ffbe0b, #ff0080, #8b00ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">FÉLICITATIONS !</h1>
+                    <p class="cyan" style="font-size: 1.8em; font-weight: bold; margin: 20px 0;">UNE SURPRISE T'ATTEND</p>
+                    <p style="color: white; font-size: 1.2em; margin: 10px 0;">EN MAGASIN</p>
+                    <div class="code-box">
+                        <p style="font-size: 0.9em; font-weight: bold; margin-bottom: 10px;">TON CODE GAGNANT :</p>
+                        <p class="code-text">cassebrique2026</p>
+                        <p style="font-size: 0.8em; margin-top: 10px;">Présente ce code en magasin</p>
+                    </div>
+                    <p style="color: white; font-size: 1.5em; margin: 20px 0;">Score final: ${score}</p>
+                    <button onclick="restartGame()">REJOUER</button>
+                </div>
+            `;
+        }
+        
+        function startGame() {
+            gameState = 'playing';
+            initGame();
+            showGameScreen();
+        }
+        
+        function nextLevel() {
+            level++;
+            gameState = 'playing';
+            initGame();
+            showGameScreen();
+        }
+        
+        function restartGame() {
+            level = 1;
+            score = 0;
+            lives = 3;
+            confettiArray = [];
+            gameState = 'playing';
+            initGame();
+            showGameScreen();
+        }
+        
+        window.addEventListener('resize', () => {
+            if (gameState === 'playing') {
+                updateCanvasSize();
+                const canvas = document.getElementById('gameCanvas');
+                if (canvas) {
+                    canvas.width = canvasWidth;
+                    canvas.height = canvasHeight;
+                }
+            }
         });
-      }
-    } else {
-      game.ball.x = game.paddle.x + game.paddle.width / 2 - game.ball.size / 2;
-    }
-
-    if (game.bricks.every(b => !b.visible)) {
-      if (level === 4) { createConfetti(); setGameState('won'); }
-      else setGameState('levelComplete');
-    }
-  };
-
-  // Draw game
-  const draw = (ctx) => {
-    const game = gameRef.current;
-    ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
-
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvasSize.height);
-    gradient.addColorStop(0, '#1a0033');
-    gradient.addColorStop(1, '#0d001a');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
-
-    ctx.strokeStyle = 'rgba(138, 43, 226, 0.1)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < canvasSize.width; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvasSize.height); ctx.stroke(); }
-    for (let i = 0; i < canvasSize.height; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvasSize.width, i); ctx.stroke(); }
-
-    // Bricks
-    game.bricks.forEach(brick => {
-      if (!brick.visible) return;
-      ctx.fillStyle = brick.color;
-      ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(brick.x, brick.y, brick.width, brick.height);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 20px "Courier New", monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(brick.letter, brick.x + brick.width / 2, brick.y + brick.height / 2);
-      if (brick.health < brick.maxHealth) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(brick.x, brick.y, brick.width, brick.height); }
-    });
-
-    // Paddle
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(game.paddle.x, game.paddle.y, game.paddle.width, game.paddle.height);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(game.paddle.x, game.paddle.y, game.paddle.width, game.paddle.height);
-
-    // Ball
-    ctx.fillStyle = '#ffff00';
-    ctx.beginPath();
-    ctx.arc(game.ball.x + game.ball.size / 2, game.ball.y + game.ball.size / 2, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.stroke();
-
-    // HUD
-    ctx.fillStyle = '#00ffff';
-    ctx.font = 'bold 20px "Courier New", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`NIVEAU: ${level}`, 20, 30);
-    ctx.fillText(`SCORE: ${score}`, 20, 55);
-    ctx.fillText(`VIES: ${'❤️'.repeat(lives)}`, canvasSize.width - 150, 30);
-
-    if (!game.ballLaunched) {
-      ctx.fillStyle = '#ffff00';
-      ctx.font = `bold ${isMobile ? '14' : '16'}px "Courier New", monospace`;
-      ctx.textAlign = 'center';
-      ctx.fillText(isMobile ? 'TOUCHE L\'ÉCRAN POUR LANCER' : 'ESPACE OU CLIC POUR LANCER',
-        canvasSize.width / 2, canvasSize.height / 2
-      );
-    }
-  };
-
-  const nextLevel = () => { setLevel(l => l + 1); setGameState('playing'); initGame(); };
-  const restartGame = () => { setLevel(1); setScore(0); setLives(3); setGameState('playing'); initGame(); };
-  const handleCanvasClick = () => { if (gameState === 'playing' && !gameRef.current.ballLaunched) gameRef.current.ballLaunched = true; };
-
-  return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-black p-4" ref={containerRef}>
-      {showBrokenGlasses && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="bg-black bg-opacity-80 p-8 rounded-lg animate-pulse">
-            <p className="text-red-500 text-2xl font-bold text-center">CASSÉES !</p>
-          </div>
-        </div>
-      )}
-      <canvas
-        ref={canvasRef}
-        width={canvasSize.width}
-        height={canvasSize.height}
-        onClick={handleCanvasClick}
-        className="border-4 border-cyan-400 rounded-lg shadow-2xl cursor-pointer mx-auto touch-none"
-        style={{ width: '100%', height: 'auto' }}
-      />
-    </div>
-  );
-};
-
-export default RetroGlassesBreaker;
+        
+        showEmailScreen();
+    </script>
+</body>
+</html>
