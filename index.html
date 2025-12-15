@@ -5,7 +5,7 @@ const RetroGlassesBreaker = () => {
   const containerRef = useRef(null);
   const requestRef = useRef(null);
 
-  const [gameState, setGameState] = useState('email');
+  const [gameState, setGameState] = useState('email'); // email / playing / levelComplete / gameOver / won
   const [level, setLevel] = useState(1);
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(3);
@@ -22,7 +22,7 @@ const RetroGlassesBreaker = () => {
   const BRICK_PADDING = 5;
   const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const BRICK_COLORS = [
-    '#FF006E', '#8338EC', '#3A86FF', '#FB5607', 
+    '#FF006E', '#8338EC', '#3A86FF', '#FB5607',
     '#FFBE0B', '#06FFA5', '#FF006E', '#8338EC'
   ];
 
@@ -36,29 +36,26 @@ const RetroGlassesBreaker = () => {
     ballLaunched: false
   });
 
-  // 🖥 Responsive canvas
+  // Canvas responsive
   useEffect(() => {
     const updateSize = () => {
       const maxWidth = window.innerWidth - 20;
       const maxHeight = window.innerHeight * 0.7;
       const aspectRatio = 800 / 600;
-
       let width = maxWidth;
       let height = width / aspectRatio;
-
       if (height > maxHeight) {
         height = maxHeight;
         width = height * aspectRatio;
       }
-
       setCanvasSize({ width: Math.floor(width), height: Math.floor(height) });
     };
-
     updateSize();
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
+  // Initialize bricks
   const initBricks = () => {
     const bricks = [];
     const rows = 5 + level;
@@ -66,7 +63,6 @@ const RetroGlassesBreaker = () => {
     const brickHeight = 30;
     const offsetTop = 80;
     const offsetLeft = 35;
-
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < BRICK_COLS; col++) {
         const health = level === 4 ? 2 : 1;
@@ -100,7 +96,7 @@ const RetroGlassesBreaker = () => {
     game.ballLaunched = false;
   };
 
-  // 🎉 Confetti
+  // Confetti
   const createConfetti = () => {
     const newConfetti = [];
     for (let i = 0; i < 150; i++) {
@@ -129,7 +125,7 @@ const RetroGlassesBreaker = () => {
     }
   }, [gameState, confetti.length, canvasSize.height]);
 
-  // 🎮 Game loop
+  // Game loop
   useEffect(() => {
     if (gameState === 'playing') {
       const canvas = canvasRef.current;
@@ -137,9 +133,7 @@ const RetroGlassesBreaker = () => {
 
       const handleKeyDown = e => {
         gameRef.current.keys[e.key] = true;
-        if (e.key === ' ' && !gameRef.current.ballLaunched) {
-          gameRef.current.ballLaunched = true;
-        }
+        if (e.key === ' ' && !gameRef.current.ballLaunched) gameRef.current.ballLaunched = true;
       };
       const handleKeyUp = e => gameRef.current.keys[e.key] = false;
 
@@ -189,18 +183,16 @@ const RetroGlassesBreaker = () => {
     }
   }, [gameState, level, lives, canvasSize]);
 
-  // 🏓 Update game
+  // Update game
   const update = () => {
     const game = gameRef.current;
 
-    // Paddle movement
     if (game.keys['ArrowLeft']) game.paddle.x -= 8;
     if (game.keys['ArrowRight']) game.paddle.x += 8;
 
     const targetX = game.touchX !== null ? game.touchX : game.mouseX;
     game.paddle.x = Math.max(0, Math.min(canvasSize.width - game.paddle.width, targetX - game.paddle.width / 2));
 
-    // Ball movement
     if (game.ballLaunched) {
       game.ball.x += game.ball.dx;
       game.ball.y += game.ball.dy;
@@ -261,19 +253,17 @@ const RetroGlassesBreaker = () => {
     }
   };
 
-  // 🎨 Draw game
+  // Draw game
   const draw = (ctx) => {
     const game = gameRef.current;
     ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
 
-    // Background
     const gradient = ctx.createLinearGradient(0, 0, 0, canvasSize.height);
     gradient.addColorStop(0, '#1a0033');
     gradient.addColorStop(1, '#0d001a');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
 
-    // Grid lines
     ctx.strokeStyle = 'rgba(138, 43, 226, 0.1)';
     ctx.lineWidth = 1;
     for (let i = 0; i < canvasSize.width; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvasSize.height); ctx.stroke(); }
@@ -292,10 +282,7 @@ const RetroGlassesBreaker = () => {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(brick.letter, brick.x + brick.width / 2, brick.y + brick.height / 2);
-      if (brick.health < brick.maxHealth) {
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
-      }
+      if (brick.health < brick.maxHealth) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(brick.x, brick.y, brick.width, brick.height); }
     });
 
     // Paddle
@@ -305,7 +292,7 @@ const RetroGlassesBreaker = () => {
     ctx.lineWidth = 2;
     ctx.strokeRect(game.paddle.x, game.paddle.y, game.paddle.width, game.paddle.height);
 
-    // Ball (glasses)
+    // Ball
     ctx.fillStyle = '#ffff00';
     ctx.beginPath();
     ctx.arc(game.ball.x + game.ball.size / 2, game.ball.y + game.ball.size / 2, 8, 0, Math.PI * 2);
@@ -321,7 +308,6 @@ const RetroGlassesBreaker = () => {
     ctx.fillText(`SCORE: ${score}`, 20, 55);
     ctx.fillText(`VIES: ${'❤️'.repeat(lives)}`, canvasSize.width - 150, 30);
 
-    // Instruction
     if (!game.ballLaunched) {
       ctx.fillStyle = '#ffff00';
       ctx.font = `bold ${isMobile ? '14' : '16'}px "Courier New", monospace`;
